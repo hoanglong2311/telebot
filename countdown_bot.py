@@ -5,6 +5,7 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 from datetime import datetime, time
 import pytz
 from aiohttp import web
+import asyncio
 
 # Dictionary to store user-specific target dates
 user_dates = {}
@@ -109,16 +110,26 @@ async def daily_reminder(context: ContextTypes.DEFAULT_TYPE) -> None:
         except Exception as e:
             logging.error(f"Failed to send reminder to user {user_id}: {str(e)}")
 
-async def web_handler():
-    """Handle incoming web requests"""
+async def web_app():
     app = web.Application()
+    app.router.add_get('/', lambda request: web.Response(text='Bot is alive!'))
     return app
 
-def main():
+async def run_web():
+    app = await web_app()
+    runner = web.AppRunner(app)
+    await runner.setup()
+    # Get port from environment variable
+    port = int(os.environ.get('PORT', '8080'))
+    site = web.TCPSite(runner, '0.0.0.0', port)
+    await site.start()
+    print(f"Web server started on port {port}")
+
+async def run_bot():
+    """Run the telegram bot"""
     # Configure logging
     logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
     
-    # Get token from environment variable
     token = os.getenv("BOT_TOKEN")
     if not token:
         raise ValueError("No BOT_TOKEN environment variable found!")
@@ -142,8 +153,17 @@ def main():
         days=(0, 1, 2, 3, 4, 5, 6)
     )
 
-    # Start the bot
-    app.run_polling()
+    await app.initialize()
+    await app.start()
+    await app.run_polling()
+
+async def main():
+    try:
+        # Run both web server and bot
+        await asyncio.gather(run_web(), run_bot())
+    except Exception as e:
+        logging.error(f"Error: {e}")
+        raise
 
 if __name__ == "__main__":
-    main() 
+    asyncio.run(main())
