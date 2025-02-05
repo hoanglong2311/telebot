@@ -111,6 +111,7 @@ async def daily_reminder(context: ContextTypes.DEFAULT_TYPE) -> None:
             logging.error(f"Failed to send reminder to user {user_id}: {str(e)}")
 
 async def web_app():
+    """Create web application for health check"""
     app = web.Application()
     app.router.add_get('/', lambda request: web.Response(text='Bot is alive!'))
     return app
@@ -134,16 +135,16 @@ async def run_bot():
     if not token:
         raise ValueError("No BOT_TOKEN environment variable found!")
         
-    app = Application.builder().token(token).build()
+    application = Application.builder().token(token).build()
 
     # Add command handlers
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("setdate", setdate))
-    app.add_handler(CommandHandler("countdown", countdown))
-    app.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("setdate", setdate))
+    application.add_handler(CommandHandler("countdown", countdown))
+    application.add_handler(CommandHandler("help", help_command))
 
     # Set up the daily job
-    job_queue = app.job_queue
+    job_queue = application.job_queue
     vietnam_time = time(10, 50)
     utc_time = time((vietnam_time.hour - 7) % 24, vietnam_time.minute)
     
@@ -153,17 +154,35 @@ async def run_bot():
         days=(0, 1, 2, 3, 4, 5, 6)
     )
 
-    await app.initialize()
-    await app.start()
-    await app.run_polling()
+    # Start the bot without polling
+    await application.initialize()
+    await application.start()
+    
+    try:
+        # Run the bot in the background
+        await application.updater.start_polling()
+        # Keep the bot running
+        await application.updater.running
+    finally:
+        await application.stop()
 
 async def main():
     try:
         # Run both web server and bot
-        await asyncio.gather(run_web(), run_bot())
+        await asyncio.gather(
+            run_web(),
+            run_bot()
+        )
     except Exception as e:
         logging.error(f"Error: {e}")
         raise
 
 if __name__ == "__main__":
+    # Set up logging
+    logging.basicConfig(
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        level=logging.INFO
+    )
+    
+    # Run the application
     asyncio.run(main())
