@@ -203,7 +203,11 @@ async def web_app():
     """Create web application for health check and webhook"""
     app = web.Application()
     app.router.add_get('/', lambda request: web.Response(text='Bot is alive!'))
-    app.router.add_post(f'/{os.getenv("BOT_TOKEN")}', handle_webhook)
+    app.router.add_post(
+        f'/{os.getenv("BOT_TOKEN")}',
+        handle_webhook,
+        name='webhook'
+    )
     return app
 
 async def run_web():
@@ -218,9 +222,29 @@ async def run_web():
 
 async def setup_webhook():
     """Set up webhook for the bot"""
-    webhook_url = f"https://{os.getenv('RENDER_EXTERNAL_URL')}/{os.getenv('BOT_TOKEN')}"
-    await _bot_app.bot.set_webhook(webhook_url)
-    print(f"Webhook set to {webhook_url}")
+    external_url = os.getenv('RENDER_EXTERNAL_URL')
+    token = os.getenv('BOT_TOKEN')
+    
+    if not external_url:
+        logging.error("RENDER_EXTERNAL_URL environment variable not set")
+        return
+        
+    webhook_url = f"https://{external_url}/{token}"
+    
+    try:
+        # Delete any existing webhook
+        await _bot_app.bot.delete_webhook()
+        
+        # Set the new webhook
+        await _bot_app.bot.set_webhook(
+            url=webhook_url,
+            allowed_updates=Update.ALL_TYPES,
+            drop_pending_updates=True
+        )
+        logging.info(f"Webhook set to {webhook_url}")
+    except Exception as e:
+        logging.error(f"Failed to set webhook: {e}")
+        raise
 
 async def run_bot():
     """Run the telegram bot"""
