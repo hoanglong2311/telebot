@@ -4,6 +4,7 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 from datetime import datetime, time
 import pytz
+from aiohttp import web
 
 # Dictionary to store user-specific target dates
 user_dates = {}
@@ -108,6 +109,11 @@ async def daily_reminder(context: ContextTypes.DEFAULT_TYPE) -> None:
         except Exception as e:
             logging.error(f"Failed to send reminder to user {user_id}: {str(e)}")
 
+async def web_handler():
+    """Handle incoming web requests"""
+    app = web.Application()
+    return app
+
 def main():
     # Configure logging
     logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
@@ -125,20 +131,18 @@ def main():
     app.add_handler(CommandHandler("countdown", countdown))
     app.add_handler(CommandHandler("help", help_command))
 
-    # Set up the daily job at 10:50 AM Vietnam time
+    # Set up the daily job
     job_queue = app.job_queue
-    
-    # Schedule the job to run daily at 10:50 AM Vietnam time
-    # Vietnam time is UTC+7
-    vietnam_time = time(10, 50)  # 10:50 AM Vietnam time
-    utc_time = time((vietnam_time.hour - 7) % 24, vietnam_time.minute)  # Convert to UTC
+    vietnam_time = time(10, 50)
+    utc_time = time((vietnam_time.hour - 7) % 24, vietnam_time.minute)
     
     job_queue.run_daily(
         daily_reminder,
         time=utc_time,
-        days=(0, 1, 2, 3, 4, 5, 6)  # Run every day of the week
+        days=(0, 1, 2, 3, 4, 5, 6)
     )
 
+    # Start the bot
     app.run_polling()
 
 if __name__ == "__main__":
