@@ -255,20 +255,25 @@ async def run_bot():
         await _bot_app.initialize()
         await _bot_app.start()
         
-        # Start polling in a way that can be properly stopped
-        await _bot_app.updater.start_polling(drop_pending_updates=True)
+        # Start polling with specific parameters
+        await _bot_app.updater.start_polling(
+            drop_pending_updates=True,
+            timeout=30,
+            read_timeout=30,
+            write_timeout=30,
+            connect_timeout=30,
+            pool_timeout=30
+        )
         
-        # Keep the bot running
-        while True:
-            await asyncio.sleep(1)
-            
+        # Keep the application running
+        await _bot_app.updater.running
+        
     except Exception as e:
         logging.error(f"Bot error: {e}")
-        raise
-    finally:
         if _bot_app:
             await _bot_app.stop()
             await _bot_app.shutdown()
+        raise
 
 async def main():
     """Main function to run both web server and bot"""
