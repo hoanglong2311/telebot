@@ -154,15 +154,21 @@ async def run_bot():
         days=(0, 1, 2, 3, 4, 5, 6)
     )
 
-    # Start the bot without polling
+    # Start the bot
     await application.initialize()
     await application.start()
     
     try:
-        # Run the bot in the background
+        # Start polling
         await application.updater.start_polling()
+        
         # Keep the bot running
-        await application.updater.running
+        while True:
+            await asyncio.sleep(1)
+            
+    except Exception as e:
+        logging.error(f"Bot error: {e}")
+        raise
     finally:
         await application.stop()
 
