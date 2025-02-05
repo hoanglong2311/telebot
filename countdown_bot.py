@@ -193,6 +193,7 @@ async def setup_webhook():
     """Set up webhook for the bot"""
     external_url = os.getenv('RENDER_EXTERNAL_URL')
     token = os.getenv('BOT_TOKEN')
+    secret_token = "your_webhook_secret_1234"  # Use a simple alphanumeric secret
     
     if not external_url:
         logging.error("RENDER_EXTERNAL_URL environment variable not set")
@@ -212,7 +213,7 @@ async def setup_webhook():
             url=webhook_url,
             allowed_updates=Update.ALL_TYPES,
             drop_pending_updates=True,
-            secret_token=token  # Use token as secret
+            secret_token=secret_token  # Use simple secret token
         )
         
         if success:
@@ -227,10 +228,10 @@ async def setup_webhook():
 
 async def handle_webhook(request):
     """Handle incoming webhook updates"""
-    token = os.getenv("BOT_TOKEN")
+    secret_token = "your_webhook_secret_1234"  # Same secret as above
     
     # Verify secret token
-    if request.headers.get('X-Telegram-Bot-Api-Secret-Token') != token:
+    if request.headers.get('X-Telegram-Bot-Api-Secret-Token') != secret_token:
         return web.Response(status=403)
     
     data = await request.json()
