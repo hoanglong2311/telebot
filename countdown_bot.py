@@ -189,10 +189,21 @@ async def water_reminder(context: ContextTypes.DEFAULT_TYPE) -> None:
         except Exception as e:
             logging.error(f"Failed to send water reminder to user {user_id}: {str(e)}")
 
+async def handle_webhook(request):
+    """Handle incoming webhook updates"""
+    if request.match_info.get('token') != os.getenv("BOT_TOKEN"):
+        return web.Response(status=403)
+    
+    data = await request.json()
+    update = Update.de_json(data, _bot_app.bot)
+    await _bot_app.process_update(update)
+    return web.Response()
+
 async def web_app():
-    """Create web application for health check"""
+    """Create web application for health check and webhook"""
     app = web.Application()
     app.router.add_get('/', lambda request: web.Response(text='Bot is alive!'))
+    app.router.add_post(f'/{os.getenv("BOT_TOKEN")}', handle_webhook)
     return app
 
 async def run_web():
@@ -204,6 +215,12 @@ async def run_web():
     site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
     print(f"Web server started on port {port}")
+
+async def setup_webhook():
+    """Set up webhook for the bot"""
+    webhook_url = f"https://{os.getenv('RENDER_EXTERNAL_URL')}/{os.getenv('BOT_TOKEN')}"
+    await _bot_app.bot.set_webhook(webhook_url)
+    print(f"Webhook set to {webhook_url}")
 
 async def run_bot():
     """Run the telegram bot"""
@@ -254,16 +271,7 @@ async def run_bot():
         # Initialize and start the bot
         await _bot_app.initialize()
         await _bot_app.start()
-        
-        # Start polling with specific parameters
-        await _bot_app.updater.start_polling(
-            drop_pending_updates=True,
-            timeout=30,
-            read_timeout=30,
-            write_timeout=30,
-            connect_timeout=30,
-            pool_timeout=30
-        )
+        await setup_webhook()
         
         # Keep the application running
         stop_signal = asyncio.Future()
@@ -272,14 +280,9 @@ async def run_bot():
     except Exception as e:
         logging.error(f"Bot error: {e}")
     finally:
-        try:
-            if _bot_app and _bot_app.updater and _bot_app.updater.running:
-                await _bot_app.updater.stop()
-            if _bot_app and _bot_app.running:
-                await _bot_app.stop()
-                await _bot_app.shutdown()
-        except Exception as e:
-            logging.error(f"Shutdown error: {e}")
+        if _bot_app and _bot_app.running:
+            await _bot_app.stop()
+            await _bot_app.shutdown()
 
 async def main():
     """Main function to run both web server and bot"""
