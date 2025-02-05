@@ -266,14 +266,20 @@ async def run_bot():
         )
         
         # Keep the application running
-        await _bot_app.updater.running
+        stop_signal = asyncio.Future()
+        await stop_signal
         
     except Exception as e:
         logging.error(f"Bot error: {e}")
-        if _bot_app:
-            await _bot_app.stop()
-            await _bot_app.shutdown()
-        raise
+    finally:
+        try:
+            if _bot_app and _bot_app.updater and _bot_app.updater.running:
+                await _bot_app.updater.stop()
+            if _bot_app and _bot_app.running:
+                await _bot_app.stop()
+                await _bot_app.shutdown()
+        except Exception as e:
+            logging.error(f"Shutdown error: {e}")
 
 async def main():
     """Main function to run both web server and bot"""
