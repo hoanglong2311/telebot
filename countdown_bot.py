@@ -189,9 +189,46 @@ async def water_reminder(context: ContextTypes.DEFAULT_TYPE) -> None:
         except Exception as e:
             logging.error(f"Failed to send water reminder to user {user_id}: {str(e)}")
 
+async def setup_webhook():
+    """Set up webhook for the bot"""
+    external_url = os.getenv('RENDER_EXTERNAL_URL')
+    token = os.getenv('BOT_TOKEN')
+    
+    if not external_url:
+        logging.error("RENDER_EXTERNAL_URL environment variable not set")
+        return
+        
+    webhook_url = f"https://{external_url}"  # Remove the token from URL
+    logging.info(f"Setting webhook to: {webhook_url}")
+    
+    try:
+        # Delete any existing webhook
+        await _bot_app.bot.delete_webhook(drop_pending_updates=True)
+        
+        # Set the new webhook
+        success = await _bot_app.bot.set_webhook(
+            url=webhook_url,
+            allowed_updates=Update.ALL_TYPES,
+            drop_pending_updates=True,
+            secret_token=token  # Use token as secret instead
+        )
+        
+        if success:
+            logging.info("Webhook setup successful")
+        else:
+            logging.error("Failed to set webhook")
+            raise ValueError("Webhook setup failed")
+            
+    except Exception as e:
+        logging.error(f"Failed to set webhook: {e}")
+        raise
+
 async def handle_webhook(request):
     """Handle incoming webhook updates"""
-    if request.match_info.get('token') != os.getenv("BOT_TOKEN"):
+    token = os.getenv("BOT_TOKEN")
+    
+    # Verify secret token
+    if request.headers.get('X-Telegram-Bot-Api-Secret-Token') != token:
         return web.Response(status=403)
     
     data = await request.json()
@@ -204,7 +241,7 @@ async def web_app():
     app = web.Application()
     app.router.add_get('/', lambda request: web.Response(text='Bot is alive!'))
     app.router.add_post(
-        f'/{os.getenv("BOT_TOKEN")}',
+        '/webhook',  # Change to a fixed path
         handle_webhook,
         name='webhook'
     )
@@ -219,32 +256,6 @@ async def run_web():
     site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
     print(f"Web server started on port {port}")
-
-async def setup_webhook():
-    """Set up webhook for the bot"""
-    external_url = os.getenv('RENDER_EXTERNAL_URL')
-    token = os.getenv('BOT_TOKEN')
-    
-    if not external_url:
-        logging.error("RENDER_EXTERNAL_URL environment variable not set")
-        return
-        
-    webhook_url = f"https://{external_url}/{token}"
-    
-    try:
-        # Delete any existing webhook
-        await _bot_app.bot.delete_webhook()
-        
-        # Set the new webhook
-        await _bot_app.bot.set_webhook(
-            url=webhook_url,
-            allowed_updates=Update.ALL_TYPES,
-            drop_pending_updates=True
-        )
-        logging.info(f"Webhook set to {webhook_url}")
-    except Exception as e:
-        logging.error(f"Failed to set webhook: {e}")
-        raise
 
 async def run_bot():
     """Run the telegram bot"""

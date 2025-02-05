@@ -7,4 +7,7 @@ RUN pip install -r requirements.txt
 
 COPY . .
 
-CMD ["python", "countdown_bot.py"] 
+# Install python-dotenv
+RUN pip install python-dotenv
+
+CMD ["python", "countdown_bot.py"]
