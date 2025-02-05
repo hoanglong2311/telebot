@@ -55,6 +55,8 @@ async def help_command(update: Update, context) -> None:
 /help - Show this help message
 /setdate - Set your target date
 /countdown - Check remaining days
+/sethealth - Set height and weight for water tracking
+/water - Log 250ml water intake
 
 *How to use:*
 1️⃣ Set your target date using:
@@ -84,6 +86,12 @@ async def help_command(update: Update, context) -> None:
 • Each user can set their own target date
 • The bot will remember your date until restart
 • Make sure you haven't blocked the bot to receive reminders
+
+*Water Tracking:*
+• Set your height and weight using `/sethealth HEIGHT WEIGHT`
+• Use `/water` each time you drink 250ml
+• Receive reminders every 2 hours
+• Daily target based on your weight
 """
     await update.message.reply_text(help_text, parse_mode='Markdown')
 
@@ -109,6 +117,72 @@ async def daily_reminder(context: ContextTypes.DEFAULT_TYPE) -> None:
                 )
         except Exception as e:
             logging.error(f"Failed to send reminder to user {user_id}: {str(e)}")
+
+async def sethealth(update: Update, context) -> None:
+    """Set user's height and weight for water calculation"""
+    try:
+        if len(context.args) == 2:
+            height = float(context.args[0])
+            weight = float(context.args[1])
+            
+            if 100 <= height <= 250 and 30 <= weight <= 200:
+                user_id = update.effective_user.id
+                # Calculate daily water target (in ml) - basic formula
+                daily_water = weight * 35  # 35ml per kg of body weight
+                
+                user_water_info[user_id] = {
+                    'height': height,
+                    'weight': weight,
+                    'daily_target': daily_water
+                }
+                user_water_counts[user_id] = 0  # Reset daily count
+                
+                await update.message.reply_text(
+                    f"Health info set!\nHeight: {height}cm\nWeight: {weight}kg\n"
+                    f"Daily water target: {daily_water}ml 💧\n"
+                    f"You will receive water reminders every 2 hours."
+                )
+            else:
+                await update.message.reply_text("Please enter valid height (100-250 cm) and weight (30-200 kg)")
+        else:
+            await update.message.reply_text("Please provide height and weight\nExample: /sethealth 170 65")
+    except ValueError:
+        await update.message.reply_text("Invalid format! Use: /sethealth HEIGHT WEIGHT\nExample: /sethealth 170 65")
+
+async def water(update: Update, context) -> None:
+    """Log water intake"""
+    user_id = update.effective_user.id
+    if user_id not in user_water_info:
+        await update.message.reply_text("Please set your health info first using /sethealth HEIGHT WEIGHT")
+        return
+
+    user_water_counts[user_id] = user_water_counts.get(user_id, 0) + 250  # Add 250ml
+    target = user_water_info[user_id]['daily_target']
+    current = user_water_counts[user_id]
+    
+    await update.message.reply_text(
+        f"Added 250ml of water! 💧\n"
+        f"Progress: {current}/{target}ml ({(current/target*100):.1f}%)"
+    )
+
+async def water_reminder(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Send water reminders to users"""
+    for user_id, info in user_water_info.items():
+        try:
+            current = user_water_counts.get(user_id, 0)
+            target = info['daily_target']
+            
+            if current < target:
+                remaining = target - current
+                await context.bot.send_message(
+                    chat_id=user_id,
+                    text=f"💧 Water Reminder!\n"
+                         f"You've had {current}ml today\n"
+                         f"Still need {remaining}ml to reach your goal\n"
+                         f"Use /water to log 250ml"
+                )
+        except Exception as e:
+            logging.error(f"Failed to send water reminder to user {user_id}: {str(e)}")
 
 async def web_app():
     """Create web application for health check"""
@@ -142,6 +216,8 @@ async def run_bot():
     application.add_handler(CommandHandler("setdate", setdate))
     application.add_handler(CommandHandler("countdown", countdown))
     application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("sethealth", sethealth))
+    application.add_handler(CommandHandler("water", water))
 
     # Set up the daily job
     job_queue = application.job_queue
@@ -152,6 +228,13 @@ async def run_bot():
         daily_reminder,
         time=utc_time,
         days=(0, 1, 2, 3, 4, 5, 6)
+    )
+
+    # Add water reminder job (every 2 hours)
+    job_queue.run_repeating(
+        water_reminder,
+        interval=7200,  # 2 hours in seconds
+        first=300  # Start first reminder after 5 minutes
     )
 
     # Start the bot
