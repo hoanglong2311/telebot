@@ -197,8 +197,10 @@ async def setup_webhook():
     if not external_url:
         logging.error("RENDER_EXTERNAL_URL environment variable not set")
         return
-        
-    webhook_url = f"https://{external_url}"  # Remove the token from URL
+    
+    # Remove any existing https:// from the URL to prevent doubles
+    external_url = external_url.replace('https://', '').replace('http://', '')
+    webhook_url = f"https://{external_url}/webhook"  # Add /webhook path
     logging.info(f"Setting webhook to: {webhook_url}")
     
     try:
@@ -210,7 +212,7 @@ async def setup_webhook():
             url=webhook_url,
             allowed_updates=Update.ALL_TYPES,
             drop_pending_updates=True,
-            secret_token=token  # Use token as secret instead
+            secret_token=token  # Use token as secret
         )
         
         if success:
