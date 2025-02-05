@@ -7,11 +7,16 @@ import pytz
 from aiohttp import web
 import asyncio
 
-# Dictionary to store user-specific target dates
+# Dictionary to store user-specific target dates and water info
 user_dates = {}
+user_water_info = {}
+user_water_counts = {}
 
 # Define Vietnam timezone
 VN_TIMEZONE = pytz.timezone('Asia/Ho_Chi_Minh')
+
+# Global variable for the bot application
+_bot_app = None
 
 async def start(update: Update, context) -> None:
     await update.message.reply_text("Hello! Use /setdate YYYY-MM-DD to set your target date, then /countdown to check remaining days.\n\nType /help for detailed instructions.")
@@ -191,10 +196,10 @@ async def web_app():
     return app
 
 async def run_web():
+    """Run web server"""
     app = await web_app()
     runner = web.AppRunner(app)
     await runner.setup()
-    # Get port from environment variable
     port = int(os.environ.get('PORT', '8080'))
     site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
@@ -202,48 +207,56 @@ async def run_web():
 
 async def run_bot():
     """Run the telegram bot"""
-    # Configure logging
-    logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
+    global _bot_app
     
+    # Configure logging
+    logging.basicConfig(
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        level=logging.INFO
+    )
+    
+    # Get token from environment variable
     token = os.getenv("BOT_TOKEN")
     if not token:
         raise ValueError("No BOT_TOKEN environment variable found!")
+    
+    # Create the Application instance
+    if _bot_app is None:
+        _bot_app = Application.builder().token(token).build()
         
-    application = Application.builder().token(token).build()
+        # Add command handlers
+        _bot_app.add_handler(CommandHandler("start", start))
+        _bot_app.add_handler(CommandHandler("setdate", setdate))
+        _bot_app.add_handler(CommandHandler("countdown", countdown))
+        _bot_app.add_handler(CommandHandler("help", help_command))
+        _bot_app.add_handler(CommandHandler("sethealth", sethealth))
+        _bot_app.add_handler(CommandHandler("water", water))
 
-    # Add command handlers
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("setdate", setdate))
-    application.add_handler(CommandHandler("countdown", countdown))
-    application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("sethealth", sethealth))
-    application.add_handler(CommandHandler("water", water))
+        # Set up the daily reminder job
+        job_queue = _bot_app.job_queue
+        vietnam_time = time(10, 50)
+        utc_time = time((vietnam_time.hour - 7) % 24, vietnam_time.minute)
+        
+        job_queue.run_daily(
+            daily_reminder,
+            time=utc_time,
+            days=(0, 1, 2, 3, 4, 5, 6)
+        )
 
-    # Set up the daily job
-    job_queue = application.job_queue
-    vietnam_time = time(10, 50)
-    utc_time = time((vietnam_time.hour - 7) % 24, vietnam_time.minute)
-    
-    job_queue.run_daily(
-        daily_reminder,
-        time=utc_time,
-        days=(0, 1, 2, 3, 4, 5, 6)
-    )
+        # Add water reminder job
+        job_queue.run_repeating(
+            water_reminder,
+            interval=7200,  # 2 hours in seconds
+            first=300  # Start first reminder after 5 minutes
+        )
 
-    # Add water reminder job (every 2 hours)
-    job_queue.run_repeating(
-        water_reminder,
-        interval=7200,  # 2 hours in seconds
-        first=300  # Start first reminder after 5 minutes
-    )
-
-    # Start the bot
-    await application.initialize()
-    await application.start()
-    
     try:
-        # Start polling
-        await application.updater.start_polling()
+        # Initialize and start the bot
+        await _bot_app.initialize()
+        await _bot_app.start()
+        
+        # Start polling in a way that can be properly stopped
+        await _bot_app.updater.start_polling(drop_pending_updates=True)
         
         # Keep the bot running
         while True:
@@ -253,9 +266,12 @@ async def run_bot():
         logging.error(f"Bot error: {e}")
         raise
     finally:
-        await application.stop()
+        if _bot_app:
+            await _bot_app.stop()
+            await _bot_app.shutdown()
 
 async def main():
+    """Main function to run both web server and bot"""
     try:
         # Run both web server and bot
         await asyncio.gather(
@@ -267,11 +283,5 @@ async def main():
         raise
 
 if __name__ == "__main__":
-    # Set up logging
-    logging.basicConfig(
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        level=logging.INFO
-    )
-    
     # Run the application
     asyncio.run(main())
